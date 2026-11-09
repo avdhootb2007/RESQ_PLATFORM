@@ -1,0 +1,7 @@
+{
+  "name": "RESQ - Emergency & Disaster Management Platform",
+  "description": "Comprehensive disaster management platform featuring instant SOS emergency dispatch, real-time multi-hazard risk monitoring, weather radar alerts, nearby shelter & hospital navigation, and community incident reporting.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
