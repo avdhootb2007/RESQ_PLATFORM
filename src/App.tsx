@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './contexts/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import { ProtectedRoute } from './components/ProtectedRoute';
+
 import { NavigationSidebar } from './components/NavigationSidebar';
 import { EnterpriseHeader } from './components/EnterpriseHeader';
 import { MetricStrip } from './components/MetricStrip';
@@ -19,7 +24,9 @@ import { ReportIncidentModal } from './components/ReportIncidentModal';
 import { DirectionsModal } from './components/DirectionsModal';
 import { EmergencyToolsModal } from './components/EmergencyToolsModal';
 import { RescueStrobeOverlay } from './components/RescueStrobeOverlay';
+import { UserMenu } from './components/UserMenu';
 
+import { useState } from 'react';
 import { 
   REGION_PRESETS, 
   INITIAL_FACILITIES, 
@@ -37,9 +44,10 @@ import {
 import { audioBeacon } from './utils/audioBeacon';
 import { TRANSLATIONS } from './utils/translations';
 
-export default function App() {
-  // 3 Interfaces: 'citizen', 'authority', 'admin'
-  const [role, setRole] = useState<'citizen' | 'authority' | 'admin'>('citizen');
+// ── Main Dashboard (authenticated) ──────────────────────────────────────────
+function Dashboard() {
+  // Role comes from Firebase custom claims now
+  const { role } = useAuth();
 
   // Multilingual State (Feature #13: English, Hindi, Marathi)
   const [language, setLanguage] = useState<SupportedLanguage>('en');
@@ -167,7 +175,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         role={role}
-        setRole={setRole}
+        setRole={() => {/* Role now managed by Firebase - no client toggle */}}
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
         activeAlertsCount={alerts.length}
@@ -178,19 +186,27 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         
         {/* Top Header with Breadcrumbs, Language Switcher, Live Clock, and SOS Trigger */}
-        <EnterpriseHeader
-          location={location}
-          onSelectPreset={handleSelectPreset}
-          currentPresetId={currentPresetId}
-          role={role}
-          setRole={setRole}
-          onOpenSos={() => setIsSosModalOpen(true)}
-          isSosActive={sosState.isActive}
-          onOpenTools={() => setIsToolsModalOpen(true)}
-          activeAlertsCount={alerts.length}
-          language={language}
-          onSelectLanguage={setLanguage}
-        />
+        <div className="flex items-center">
+          <div className="flex-1">
+            <EnterpriseHeader
+              location={location}
+              onSelectPreset={handleSelectPreset}
+              currentPresetId={currentPresetId}
+              role={role}
+              setRole={() => {/* Role now managed by Firebase */}}
+              onOpenSos={() => setIsSosModalOpen(true)}
+              isSosActive={sosState.isActive}
+              onOpenTools={() => setIsToolsModalOpen(true)}
+              activeAlertsCount={alerts.length}
+              language={language}
+              onSelectLanguage={setLanguage}
+            />
+          </div>
+          {/* User Menu in header */}
+          <div className="pr-4 pt-2">
+            <UserMenu />
+          </div>
+        </div>
 
         {/* Pinned Active SOS Broadcast Bar */}
         <SosActiveBar
@@ -229,42 +245,18 @@ export default function App() {
               {/* Telemetry Chart: Real SVG meteorological and rainfall model */}
               <TelemetryChart />
 
-              {/* Interface Selector Tabs */}
+              {/* Role Badge (read-only — shows Firebase-assigned role) */}
               <div className="bg-white border border-slate-200 rounded-xl p-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-sm">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-mono uppercase text-slate-500 font-bold px-3">
                     {t.activeConsole}
                   </span>
-                  <button
-                    onClick={() => setRole('citizen')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                      role === 'citizen'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    {t.citizenHub}
-                  </button>
-                  <button
-                    onClick={() => setRole('authority')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                      role === 'authority'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    {t.authorityOps}
-                  </button>
-                  <button
-                    onClick={() => setRole('admin')}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                      role === 'admin'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    {t.systemAdmin}
-                  </button>
+                  <div className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white shadow-sm`}>
+                    {role === 'citizen' ? t.citizenHub : role === 'authority' ? t.authorityOps : t.systemAdmin}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono ml-2">
+                    Role assigned by Firebase Admin
+                  </span>
                 </div>
 
                 <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-slate-500 pr-3">
@@ -429,5 +421,22 @@ export default function App() {
       />
 
     </div>
+  );
+}
+
+// ── Root App with Routing ────────────────────────────────────────────────────
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }
