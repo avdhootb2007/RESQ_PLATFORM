@@ -37,6 +37,7 @@
 ## 🛠️ Tech Stack
 
 - **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide React, Motion
+- **Backend & Auth**: Supabase (`@supabase/supabase-js` Auth, PostgreSQL, Row-Level Security, Realtime, RPCs)
 - **Architecture**: Modular IT developer-grade layout, light theme, high-contrast typography
 - **Multilingual Support**: English (`en`), Hindi (`hi`), Marathi (`mr`)
 - **Emergency Hardware Emulation**: Web Audio API oscillator siren, Fullscreen Strobe overlay
@@ -48,6 +49,7 @@
 ### Prerequisites
 - Node.js 18+
 - npm or bun
+- A [Supabase](https://supabase.com/) project (optional — runs in Local Demo Mode if `.env` is not configured)
 
 ### Installation
 
@@ -61,9 +63,21 @@ cd RESQ
 # Install dependencies
 npm install
 
+# Configure environment variables
+cp .env.example .env
+# Edit .env with your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+
 # Start development server
 npm run dev
 ```
+
+### Supabase Database Setup
+1. Open your **Supabase Dashboard → SQL Editor → New query**.
+2. Paste and run the contents of `supabase/schema.sql` to create tables (`profiles`, `facilities`, `incidents`, `sos_beacons`, `alerts`, `resources`), triggers, RLS policies, and the `set_user_role` RPC.
+3. After signing up your first user, promote them to `admin` by running in the SQL Editor:
+   ```sql
+   update public.profiles set role = 'admin' where email = 'your-email@example.com';
+   ```
 
 Open `http://localhost:3000` to view the application.
 

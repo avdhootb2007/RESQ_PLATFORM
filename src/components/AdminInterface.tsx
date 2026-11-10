@@ -1,38 +1,53 @@
 import React, { useState } from 'react';
-import { 
-  Building2, 
-  Check, 
-  Server, 
-  Network, 
-  Droplet, 
-  Truck, 
-  HeartHandshake, 
-  Share2, 
-  Database, 
-  Layers, 
-  Plus, 
-  Edit3,
+import {
+  Building2,
+  Check,
+  Server,
+  Network,
+  Droplet,
   Shield,
-  Key,
-  Radio,
   BarChart3,
-  Cpu,
   AlertTriangle,
-  HardDrive
+  Compass,
+  PackageCheck,
 } from 'lucide-react';
-import { Facility, MultiOrgResource, SupportedLanguage } from '../types/disaster';
-import { MOCK_MULTI_ORG_RESOURCES } from '../data/mockDisasterData';
+import {
+  Facility,
+  MultiOrgResource,
+  ResourceRequest,
+  CommunityIncident,
+  SosBeaconRecord,
+  LifecycleStage,
+  SupportedLanguage,
+} from '../types/disaster';
 import { TRANSLATIONS } from '../utils/translations';
+import { AdminUserManagement } from './AdminUserManagement';
 
 interface AdminInterfaceProps {
   facilities: Facility[];
   onUpdateFacility: (updated: Facility) => void;
+  resources: MultiOrgResource[];
+  onAllocateResource: (id: string, targetSector: string) => void;
+  resourceRequests: ResourceRequest[];
+  onFulfillResourceRequest: (requestId: string, resourceId: string) => void;
+  incidents: CommunityIncident[];
+  sosBeacons: SosBeaconRecord[];
+  lifecycleStage: LifecycleStage;
+  onBroadcastUrgentBloodAlert?: (facilityName: string) => void;
   language?: SupportedLanguage;
 }
 
 export const AdminInterface: React.FC<AdminInterfaceProps> = ({
   facilities,
   onUpdateFacility,
+  resources,
+  onAllocateResource,
+  resourceRequests,
+  onFulfillResourceRequest,
+  incidents,
+  sosBeacons,
+  lifecycleStage,
+  onBroadcastUrgentBloodAlert,
   language = 'en',
 }) => {
   const t = TRANSLATIONS[language];
@@ -40,31 +55,32 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [editTotalCapacity, setEditTotalCapacity] = useState<number>(500);
   const [editUsedCapacity, setEditUsedCapacity] = useState<number>(300);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
-  const [resources, setResources] = useState<MultiOrgResource[]>(MOCK_MULTI_ORG_RESOURCES);
 
-  // Damage Assessment & Relief Optimizer simulation state
   const [simulatedInundationDepth, setSimulatedInundationDepth] = useState<number>(1.2);
-  const [droneCorridors, setDroneCorridors] = useState([
+  const [droneCorridors] = useState([
     { id: 'DRN-A1', callsign: 'Recon Sky-1', corridor: 'Sector 2 Floodplain Path', batteryPct: 78, status: 'MAPPING', resolution: '4K FLIR' },
     { id: 'DRN-B3', callsign: 'Heavy Lifter-3', corridor: 'Ghat Landslide Corridor', batteryPct: 91, status: 'AIRDROP_READY', resolution: 'LiDAR Terrain' },
     { id: 'DRN-C2', callsign: 'Relief Relay-2', corridor: 'Coastal Harbor Approach', batteryPct: 62, status: 'RADIO_MESH', resolution: 'HD Optical' },
   ]);
 
-  // Infrastructure Telemetry Sensors
   const [infrastructureSensors, setInfrastructureSensors] = useState([
-    { id: 'pmp-1', name: 'Harbor Stormwater Pump Station #1', status: 'ONLINE', capacity: '95% Flow', health: 'Nominal', interlock: 'RUNNING' },
-    { id: 'gst-1', name: 'Cedar River Crest Ultrasonic Gauge #4', status: 'WARNING', capacity: '+3.2m Peak', health: 'Warning', interlock: 'MONITORING' },
-    { id: 'brr-1', name: 'Coastal Surge Barrier Sea Gate', status: 'DEPLOYED', capacity: '100% Barrier', health: 'Secured', interlock: 'LOCKED' },
-    { id: 'pwr-1', name: 'Substation 3B Power Grid Interlock', status: 'ISOLATED', capacity: 'De-energized', health: 'Safety Lock', interlock: 'ISOLATED' },
+    { id: 'pmp-1', name: 'Harbor Stormwater Pump Station #1', status: 'ONLINE', capacity: '95% Flow', interlock: 'RUNNING' },
+    { id: 'gst-1', name: 'Cedar River Crest Ultrasonic Gauge #4', status: 'WARNING', capacity: '+3.2m Peak', interlock: 'MONITORING' },
+    { id: 'brr-1', name: 'Coastal Surge Barrier Sea Gate', status: 'DEPLOYED', capacity: '100% Barrier', interlock: 'LOCKED' },
+    { id: 'pwr-1', name: 'Substation 3B Power Grid Interlock', status: 'ISOLATED', capacity: 'De-energized', interlock: 'ISOLATED' },
   ]);
 
-  // Agency RBAC & Authorization Directory
   const rbacAgencies = [
     { agency: 'National Disaster Response Force (NDRF)', clearance: 'Level 1 (Full Operational)', keyId: 'API-NDRF-9901', frequency: 'VHF 156.800 MHz (Ch 16)', nodes: 14 },
     { agency: 'State Disaster Management Authority (SDMA)', clearance: 'Level 1 (Full Operational)', keyId: 'API-SDMA-4412', frequency: 'VHF 154.280 MHz', nodes: 28 },
     { agency: 'Indian Red Cross Society / Khalsa Aid', clearance: 'Level 2 (Relief Logistics)', keyId: 'API-NGO-1029', frequency: 'Civil HF 7.150 MHz', nodes: 8 },
     { agency: 'City Municipal Public Works & Water Dept', clearance: 'Level 2 (Civil Infrastructure)', keyId: 'API-MCGM-7721', frequency: 'VHF 153.860 MHz', nodes: 12 },
   ];
+
+  const notify = (msg: string) => {
+    setSaveNotice(msg);
+    setTimeout(() => setSaveNotice(null), 3500);
+  };
 
   const handleStartEdit = (f: Facility) => {
     setEditingFacilityId(f.id);
@@ -77,76 +93,106 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
       ...f,
       capacityTotal: editTotalCapacity,
       capacityUsed: editUsedCapacity,
-      status: editUsedCapacity >= editTotalCapacity ? 'FULL' : editUsedCapacity >= editTotalCapacity * 0.85 ? 'NEAR_CAPACITY' : 'OPEN'
+      status:
+        editUsedCapacity >= editTotalCapacity
+          ? 'FULL'
+          : editUsedCapacity >= editTotalCapacity * 0.85
+          ? 'NEAR_CAPACITY'
+          : 'OPEN',
     };
     onUpdateFacility(updated);
     setEditingFacilityId(null);
-    setSaveNotice(`Facility "${f.name}" capacity and reserves synchronized.`);
-    setTimeout(() => setSaveNotice(null), 3000);
+    notify(`Facility "${f.name}" synced to Citizen Safe Places & Authority EOC.`);
   };
 
   const handleAdjustBlood = (facilityId: string, group: 'O+' | 'O-' | 'A+' | 'B+' | 'AB+', delta: number) => {
-    const fac = facilities.find(f => f.id === facilityId);
+    const fac = facilities.find((f) => f.id === facilityId);
     if (!fac || !fac.bloodStock) return;
     const current = fac.bloodStock[group] || 0;
-    const updatedStock = {
-      ...fac.bloodStock,
-      [group]: Math.max(0, current + delta)
-    };
     onUpdateFacility({
       ...fac,
-      bloodStock: updatedStock
+      bloodStock: {
+        ...fac.bloodStock,
+        [group]: Math.max(0, current + delta),
+      },
     });
-    setSaveNotice(`Updated ${group} reserves at ${fac.name}`);
-    setTimeout(() => setSaveNotice(null), 2500);
-  };
-
-  const handleAllocateResource = (id: string, targetSector: string) => {
-    setResources(prev => prev.map(r => r.id === id ? { ...r, status: 'DEPLOYED', assignedToSector: targetSector } : r));
-    setSaveNotice('Resource matched and assigned to target sector.');
-    setTimeout(() => setSaveNotice(null), 3000);
+    notify(`Updated ${group} reserves at ${fac.name} (live on Citizen & Authority views).`);
   };
 
   const handleTogglePump = (sensorId: string) => {
-    setInfrastructureSensors(prev => prev.map(s => {
-      if (s.id !== sensorId) return s;
-      const nextInterlock = s.interlock === 'RUNNING' ? 'STANDBY' : 'RUNNING';
-      return { ...s, interlock: nextInterlock };
-    }));
-    setSaveNotice('Infrastructure command acknowledged by supervisory control interlock.');
-    setTimeout(() => setSaveNotice(null), 3000);
+    setInfrastructureSensors((prev) =>
+      prev.map((s) => {
+        if (s.id !== sensorId) return s;
+        return { ...s, interlock: s.interlock === 'RUNNING' ? 'STANDBY' : 'RUNNING' };
+      })
+    );
+    notify('Infrastructure command acknowledged by supervisory control interlock.');
   };
 
-  // Calculated estimates based on inundation depth slider
   const estimatedDisplaced = Math.round(simulatedInundationDepth * 28500);
   const estimatedShelterBedsNeeded = Math.round(estimatedDisplaced * 0.35);
+  const totalShelterCapacity = facilities
+    .filter((f) => f.type === 'SHELTER' || f.type === 'HOSPITAL')
+    .reduce((sum, f) => sum + Math.max(0, f.capacityTotal - f.capacityUsed), 0);
+
+  const verifiedDeficits = incidents.filter((i) => i.isVerified && i.status !== 'RESOLVED').length;
+  const activeSosBloodNeeds = sosBeacons
+    .filter((b) => b.isActive && b.bloodType && b.bloodType !== 'Unknown')
+    .map((b) => b.bloodType);
 
   return (
     <div className="space-y-6 pt-1">
-      
+      {/* Cross-Interface Sync Banner */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 font-mono font-bold uppercase text-[10px] px-2.5 py-1 rounded bg-slate-900 text-white">
+            <Compass className="w-3.5 h-3.5" />
+            EOC Phase: {lifecycleStage}
+          </span>
+          <span className="text-slate-600">
+            Open Authority Requests:{' '}
+            <strong className="text-red-600 font-mono">
+              {resourceRequests.filter((r) => r.status === 'OPEN').length}
+            </strong>
+          </span>
+          <span className="text-slate-300">·</span>
+          <span className="text-slate-600">
+            Verified Field Hazards: <strong className="text-slate-900 font-mono">{verifiedDeficits}</strong>
+          </span>
+          {activeSosBloodNeeds.length > 0 && (
+            <>
+              <span className="text-slate-300">·</span>
+              <span className="text-red-700 font-mono font-semibold">
+                Active SOS Blood Groups: {Array.from(new Set(activeSosBloodNeeds)).join(', ')}
+              </span>
+            </>
+          )}
+        </div>
+        <span className="font-mono text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-bold self-start sm:self-auto">
+          Synced with Citizen & Authority
+        </span>
+      </div>
+
       {/* 1. Infrastructure Supervisory Telemetry Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         {infrastructureSensors.map((sensor) => (
-          <div
-            key={sensor.id}
-            className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-sm"
-          >
+          <div key={sensor.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-1.5 shadow-sm">
             <div className="flex items-center justify-between text-xs">
               <span className="font-mono text-[10px] uppercase text-slate-500 truncate max-w-[140px]">
                 {sensor.name.split(' ')[0]}
               </span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
-                sensor.status === 'WARNING'
-                  ? 'bg-red-50 text-red-700 border border-red-200'
-                  : 'bg-slate-100 text-slate-700 border border-slate-200'
-              }`}>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                  sensor.status === 'WARNING'
+                    ? 'bg-red-50 text-red-700 border border-red-200'
+                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                }`}
+              >
                 {sensor.status}
               </span>
             </div>
 
-            <div className="text-sm font-bold text-slate-900 truncate">
-              {sensor.name}
-            </div>
+            <div className="text-sm font-bold text-slate-900 truncate">{sensor.name}</div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono pt-1 border-t border-slate-200">
               <span>Metric: {sensor.capacity}</span>
@@ -168,7 +214,150 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
         </div>
       )}
 
-      {/* 2. Data-Assisted Damage Assessment & Relief Deployment Planner */}
+      {/* 2. Incoming Authority Resource Requests & Multi-Organization Matching Matrix */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+              <Network className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                {t.multiOrg} & Authority Request Fulfillment
+              </h3>
+              <p className="text-xs text-slate-500">
+                Match incoming EOC Authority supply requests with Hospitals, NGOs, and Suppliers
+              </p>
+            </div>
+          </div>
+
+          <span className="text-xs font-mono text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+            {resources.length} Coalition Nodes
+          </span>
+        </div>
+
+        {/* Authority Logistics Requests Queue */}
+        {resourceRequests.length > 0 && (
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+            <div className="text-xs font-mono uppercase font-bold text-slate-700 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <PackageCheck className="w-4 h-4 text-slate-700" />
+                Incoming Logistics Requests from Authority EOC
+              </span>
+              <span>{resourceRequests.filter((r) => r.status === 'OPEN').length} Open</span>
+            </div>
+
+            <div className="space-y-2">
+              {resourceRequests.map((req) => {
+                const candidate =
+                  resources.find((r) => r.resourceCategory === req.resourceCategory) || resources[0];
+                return (
+                  <div
+                    key={req.id}
+                    className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                            req.urgency === 'CRITICAL'
+                              ? 'bg-red-50 text-red-700 border-red-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}
+                        >
+                          {req.urgency}
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {req.resourceCategory.replace('_', ' ')} — {req.neededQty}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        Target: <strong className="text-slate-800">{req.sector}</strong> · Requested by {req.requestedBy}
+                      </div>
+                    </div>
+
+                    {req.status === 'OPEN' && candidate ? (
+                      <button
+                        onClick={() => {
+                          onFulfillResourceRequest(req.id, candidate.id);
+                          notify(`Matched ${candidate.orgName} to Authority request for ${req.sector}`);
+                        }}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-[11px] shrink-0 transition-colors"
+                      >
+                        Match & Deploy ({candidate.orgName.split(' ')[0]})
+                      </button>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[10px] font-bold shrink-0">
+                        ✓ {req.status} {req.matchedOrgName ? `(${req.matchedOrgName.split(' ')[0]})` : ''}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Resource Allocation Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {resources.map((res) => (
+            <div
+              key={res.id}
+              className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs flex flex-col justify-between"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`px-2 py-0.2 rounded text-[10px] font-mono font-bold uppercase border ${
+                      res.orgType === 'AUTHORITY'
+                        ? 'bg-slate-200 text-slate-800 border-slate-300'
+                        : res.orgType === 'HOSPITAL'
+                        ? 'bg-red-50 text-red-700 border-red-200'
+                        : res.orgType === 'NGO'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    {res.orgType}
+                  </span>
+                  <span
+                    className={`font-mono text-[10px] font-bold ${
+                      res.status === 'DEPLOYED'
+                        ? 'text-emerald-700'
+                        : res.status === 'EN_ROUTE'
+                        ? 'text-amber-700'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    ● {res.status}
+                  </span>
+                </div>
+
+                <h4 className="text-sm font-bold text-slate-900 pt-0.5">{res.orgName}</h4>
+                <div className="text-xs font-mono font-semibold text-slate-800">{res.availableQty}</div>
+                <div className="text-[11px] text-slate-500">
+                  Target Sector: <strong className="text-slate-800">{res.assignedToSector}</strong>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    onAllocateResource(res.id, 'Sector 2 Floodplain Core');
+                    notify(`${res.orgName} deployed to Sector 2 (visible on Citizen & Authority views).`);
+                  }}
+                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded text-[11px] font-semibold transition-colors shadow-xs"
+                >
+                  Deploy to Sector 2
+                </button>
+                <span className="text-[10px] text-slate-400 font-mono">{res.resourceCategory}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. Data-Assisted Damage Assessment & Relief Deployment Intelligence */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2">
@@ -180,7 +369,7 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 Data-Assisted Damage Assessment & Relief Deployment Intelligence
               </h3>
               <p className="text-xs text-slate-500">
-                Inundation footprint modeling, displaced population forecasts & aerial drone survey corridors
+                Inundation footprint modeling, shelter gap analysis ({totalShelterCapacity} open beds) & UAV corridors
               </p>
             </div>
           </div>
@@ -190,7 +379,6 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
         </div>
 
-        {/* Predictive Simulator Slider */}
         <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <label className="font-mono text-slate-700 font-bold uppercase text-[10px]">
@@ -227,22 +415,21 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <div className="bg-white p-2.5 rounded-lg border border-slate-200">
               <div className="text-[10px] text-slate-500 uppercase">Critical Structures At Risk</div>
               <div className="text-lg font-bold text-red-600 tabular-nums">
-                {Math.round(simulatedInundationDepth * 14)} buildings
+                {Math.round(simulatedInundationDepth * 14) + verifiedDeficits} sites
               </div>
             </div>
             <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-              <div className="text-[10px] text-slate-500 uppercase">Recommended Staging</div>
-              <div className="text-xs font-bold text-slate-900 pt-1">
-                Plateau Ridge Grounds
+              <div className="text-[10px] text-slate-500 uppercase">Live Bed Deficit</div>
+              <div className="text-lg font-bold text-red-600 tabular-nums">
+                {Math.max(0, estimatedShelterBedsNeeded - totalShelterCapacity).toLocaleString()} beds
               </div>
             </div>
           </div>
         </div>
 
-        {/* Aerial Survey Drone Corridors */}
         <div className="space-y-2">
           <div className="text-xs font-mono font-semibold text-slate-600 uppercase flex items-center justify-between">
-            <span>Aerial UAV Survey & Mesh Flight Corridors</span>
+            <span>Aerial UAV Survey & Imagery Damage Corridors</span>
             <span>3 Drones Active</span>
           </div>
 
@@ -258,7 +445,9 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 <div className="text-slate-600 text-[11px] truncate">Path: {drone.corridor}</div>
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-200">
                   <span>Sensor: {drone.resolution}</span>
-                  <span>Battery: <strong>{drone.batteryPct}%</strong></span>
+                  <span>
+                    Battery: <strong>{drone.batteryPct}%</strong>
+                  </span>
                 </div>
               </div>
             ))}
@@ -266,79 +455,7 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
         </div>
       </div>
 
-      {/* 3. Multi-Organization Network Coordination (Authorities, Hospitals, NGOs, Suppliers) */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center">
-              <Network className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                {t.multiOrg} (Resource Matching Matrix)
-              </h3>
-              <p className="text-xs text-slate-500">
-                Cross-agency coordination: Authorities, Hospitals, NGOs, and Food/Water Logistics
-              </p>
-            </div>
-          </div>
-
-          <span className="text-xs font-mono text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-            5 Active Coalition Nodes
-          </span>
-        </div>
-
-        {/* Resource Allocation Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {resources.map((res) => (
-            <div
-              key={res.id}
-              className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs flex flex-col justify-between"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className={`px-2 py-0.2 rounded text-[10px] font-mono font-bold uppercase border ${
-                    res.orgType === 'AUTHORITY' ? 'bg-slate-200 text-slate-800 border-slate-300' :
-                    res.orgType === 'HOSPITAL' ? 'bg-red-50 text-red-700 border-red-200' :
-                    res.orgType === 'NGO' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
-                    'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}>
-                    {res.orgType}
-                  </span>
-                  <span className={`font-mono text-[10px] font-bold ${
-                    res.status === 'DEPLOYED' ? 'text-emerald-700' :
-                    res.status === 'EN_ROUTE' ? 'text-amber-700' : 'text-slate-600'
-                  }`}>
-                    ● {res.status}
-                  </span>
-                </div>
-
-                <h4 className="text-sm font-bold text-slate-900 pt-0.5">
-                  {res.orgName}
-                </h4>
-                <div className="text-xs font-mono font-semibold text-slate-800">
-                  {res.availableQty}
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  Target Sector: <strong className="text-slate-800">{res.assignedToSector}</strong>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                <button
-                  onClick={() => handleAllocateResource(res.id, 'Sector 2 Floodplain Core')}
-                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded text-[11px] font-semibold transition-colors shadow-xs"
-                >
-                  Re-assign Sector
-                </button>
-                <span className="text-[10px] text-slate-400 font-mono">Matched</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 4. Safe Places & Blood Bank Registry & Capacity Management */}
+      {/* 4. Master Facilities, Shelters & Blood Bank Registry */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2">
@@ -348,7 +465,7 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </h4>
           </div>
           <span className="text-[11px] font-mono text-slate-500">
-            {facilities.length} Registered Infrastructure Nodes
+            Updates sync instantly to Citizen Safe Places & Authority EOC
           </span>
         </div>
 
@@ -358,18 +475,19 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
             const occupancyPct = Math.round((fac.capacityUsed / fac.capacityTotal) * 100);
 
             return (
-              <div
-                key={fac.id}
-                className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5 text-xs"
-              >
+              <div key={fac.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5 text-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className={`font-mono text-[10px] uppercase font-bold px-1.5 py-0.2 rounded border ${
-                        fac.type === 'BLOOD_BANK' ? 'bg-red-50 text-red-700 border-red-200' :
-                        fac.type === 'HOSPITAL' ? 'bg-slate-200 text-slate-800 border-slate-300' :
-                        'bg-white text-slate-700 border-slate-200'
-                      }`}>
+                      <span
+                        className={`font-mono text-[10px] uppercase font-bold px-1.5 py-0.2 rounded border ${
+                          fac.type === 'BLOOD_BANK'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : fac.type === 'HOSPITAL'
+                            ? 'bg-slate-200 text-slate-800 border-slate-300'
+                            : 'bg-white text-slate-700 border-slate-200'
+                        }`}
+                      >
                         {fac.type}
                       </span>
                       <span>·</span>
@@ -385,7 +503,7 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                       {fac.capacityUsed} / {fac.capacityTotal} Capacity ({occupancyPct}%)
                     </span>
                     <button
-                      onClick={() => isEditing ? handleSaveFacility(fac) : handleStartEdit(fac)}
+                      onClick={() => (isEditing ? handleSaveFacility(fac) : handleStartEdit(fac))}
                       className={`px-3 py-1 rounded-lg font-mono text-[11px] font-semibold transition-colors ${
                         isEditing
                           ? 'bg-slate-900 text-white'
@@ -397,19 +515,24 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   </div>
                 </div>
 
-                {/* If blood bank, show interactive blood reserves adjustment */}
                 {fac.bloodStock && (
                   <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <span className="text-[11px] font-bold text-slate-900 flex items-center gap-1">
                         <Droplet className="w-3.5 h-3.5 text-red-600" />
                         Blood & Plasma Inventory Controls:
                       </span>
                       <button
-                        onClick={() => alert(`Emergency Blood Drive Notification broadcast to registered donors in ${fac.name} zone.`)}
-                        className="text-[10px] font-mono text-red-700 hover:text-red-800 font-bold bg-red-50 border border-red-200 px-2 py-0.5 rounded"
+                        onClick={() => {
+                          if (onBroadcastUrgentBloodAlert) {
+                            onBroadcastUrgentBloodAlert(fac.name);
+                            notify(`Urgent Blood Donor Alert broadcast to Citizens for ${fac.name}.`);
+                          }
+                        }}
+                        className="text-[10px] font-mono text-red-700 hover:text-red-800 font-bold bg-red-50 border border-red-200 px-2 py-0.5 rounded flex items-center gap-1"
                       >
-                        + Issue Urgent Blood Call
+                        <AlertTriangle className="w-3 h-3" />
+                        + Issue Urgent Blood Call (Live Alert)
                       </button>
                     </div>
 
@@ -418,7 +541,10 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                         const units = fac.bloodStock ? fac.bloodStock[group] : 0;
                         const isCritical = units < 15;
                         return (
-                          <div key={group} className="bg-slate-50 p-2 rounded border border-slate-200 flex flex-col items-center justify-between">
+                          <div
+                            key={group}
+                            className="bg-slate-50 p-2 rounded border border-slate-200 flex flex-col items-center justify-between"
+                          >
                             <span className="text-[10px] text-slate-500 uppercase">{group}</span>
                             <span className={`text-base font-bold my-0.5 ${isCritical ? 'text-red-600' : 'text-slate-900'}`}>
                               {units} u
@@ -470,10 +596,19 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 text-[11px] text-slate-500 font-mono pt-1">
-                    <span>Power Generator: <strong className="text-slate-900">{fac.features.backupGenerator ? 'Active' : 'N/A'}</strong></span>
-                    <span>Clean Water: <strong className="text-slate-900">{fac.features.cleanWater ? 'Supplied' : 'Pending'}</strong></span>
-                    <span>Medical Staff: <strong className="text-slate-900">{fac.features.medicalStaff ? 'On Duty' : 'On Call'}</strong></span>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500 font-mono pt-1 flex-wrap">
+                    <span>
+                      Power Generator:{' '}
+                      <strong className="text-slate-900">{fac.features.backupGenerator ? 'Active' : 'N/A'}</strong>
+                    </span>
+                    <span>
+                      Clean Water:{' '}
+                      <strong className="text-slate-900">{fac.features.cleanWater ? 'Supplied' : 'Pending'}</strong>
+                    </span>
+                    <span>
+                      Medical Staff:{' '}
+                      <strong className="text-slate-900">{fac.features.medicalStaff ? 'On Duty' : 'On Call'}</strong>
+                    </span>
                   </div>
                 )}
               </div>
@@ -482,7 +617,10 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
         </div>
       </div>
 
-      {/* 5. Agency Role-Based Access Control (RBAC) & VHF Radio Directory */}
+      {/* 5. User Role Management (Supabase RBAC) */}
+      <AdminUserManagement />
+
+      {/* 6. Agency Role-Based Access Control (RBAC) & VHF Radio Directory */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-3">
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2">
@@ -500,7 +638,7 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
 
           <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-bold">
-            TLS 1.3 / mTLS Enforced
+            TLS 1.3 / RLS Enforced
           </span>
         </div>
 
@@ -523,9 +661,7 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   <td className="py-2.5 font-mono text-[11px] font-bold text-slate-800">{agency.frequency}</td>
                   <td className="py-2.5 font-mono text-[11px] text-slate-600">{agency.nodes} connected</td>
                   <td className="py-2.5 font-mono text-[10px] text-slate-500">
-                    <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                      {agency.keyId}
-                    </span>
+                    <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{agency.keyId}</span>
                   </td>
                 </tr>
               ))}
@@ -534,20 +670,19 @@ export const AdminInterface: React.FC<AdminInterfaceProps> = ({
         </div>
       </div>
 
-      {/* 6. Platform Resiliency, Offline Sync & Cellular Gateways */}
+      {/* 7. Platform Resiliency, Offline Sync & Cellular Gateways */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 text-xs space-y-2 shadow-sm">
         <div className="flex items-center justify-between text-slate-500 font-mono text-[11px]">
           <span className="uppercase text-slate-700 flex items-center gap-1.5 font-bold">
             <Server className="w-3.5 h-3.5 text-slate-600" />
             RESQ Platform Health, Offline Sync & Cellular Gateways
           </span>
-          <span className="text-emerald-700 font-bold">All 6 Gateway Clusters Healthy</span>
+          <span className="text-emerald-700 font-bold">Supabase + Offline Queue Healthy</span>
         </div>
         <p className="text-[11px] text-slate-500 leading-relaxed font-mono">
-          EAS Broadcast Latency: 120ms · Offline Sync Engine: 0 items pending · Geolocation Accuracy: ±5m · Cellular SMS Fallback: 100% Ready.
+          EAS Broadcast Latency: 120ms · Cross-Interface Sync: Active · Geolocation Accuracy: ±5m · Cellular SMS Fallback: 100% Ready.
         </p>
       </div>
-
     </div>
   );
 };

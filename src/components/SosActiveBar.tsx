@@ -66,11 +66,20 @@ export const SosActiveBar: React.FC<SosActiveBarProps> = ({
             </button>
             <span className="text-red-200">·</span>
             <span className="font-mono text-white font-semibold tabular-nums">
-              Transmitting for {formatTime(elapsedSeconds)}
+              {formatTime(elapsedSeconds)}
             </span>
             <span className="text-red-200">·</span>
-            <span className="text-red-100 hidden md:inline">
-              {sosState.contactsNotifiedCount} Safety Contacts Pinged
+            <span className="font-mono text-[11px] bg-white/15 border border-white/25 px-2 py-0.5 rounded font-bold">
+              {sosState.workflowStage === 'ON_SCENE'
+                ? `UNIT ON SCENE (${sosState.assignedUnit || 'Rescue Unit'})`
+                : sosState.workflowStage === 'IN_TRANSIT'
+                ? `IN TRANSIT · ${sosState.assignedUnit || 'Unit'} (~${sosState.etaMinutes ?? 3}m)`
+                : sosState.workflowStage === 'DISPATCHED'
+                ? `DISPATCHED · ${sosState.assignedUnit || 'Unit'} (~${sosState.etaMinutes ?? 6}m)`
+                : `BROADCASTED · Awaiting EOC Dispatch`}
+            </span>
+            <span className="text-red-100 hidden lg:inline">
+              · {sosState.contactsNotifiedCount} Family Contacts Pinged
             </span>
           </div>
         </div>

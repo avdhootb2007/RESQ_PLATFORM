@@ -20,6 +20,7 @@ interface EnterpriseHeaderProps {
   activeAlertsCount: number;
   language: SupportedLanguage;
   onSelectLanguage: (lang: SupportedLanguage) => void;
+  userMenu?: React.ReactNode;
 }
 
 export const EnterpriseHeader: React.FC<EnterpriseHeaderProps> = ({
@@ -34,6 +35,7 @@ export const EnterpriseHeader: React.FC<EnterpriseHeaderProps> = ({
   activeAlertsCount,
   language,
   onSelectLanguage,
+  userMenu,
 }) => {
   const [timeString, setTimeString] = useState('');
   const t = TRANSLATIONS[language];
@@ -136,6 +138,13 @@ export const EnterpriseHeader: React.FC<EnterpriseHeaderProps> = ({
           <span className="text-[10px] uppercase font-mono text-slate-400">Role:</span>
           <span className="font-mono font-bold uppercase text-slate-900">{role}</span>
         </div>
+
+        {/* User Account Menu */}
+        {userMenu && (
+          <div className="pl-2 border-l border-slate-200">
+            {userMenu}
+          </div>
+        )}
 
       </div>
 

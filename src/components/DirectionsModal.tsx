@@ -1,43 +1,68 @@
 import React, { useState } from 'react';
 import { X, Navigation, Download, Check, ExternalLink } from 'lucide-react';
-import { Facility, LocationData } from '../types/disaster';
+import { Facility, LocationData, CommunityIncident } from '../types/disaster';
 
 interface DirectionsModalProps {
   facility: Facility | null;
   onClose: () => void;
   userLocation: LocationData;
+  incidents?: CommunityIncident[];
 }
 
 export const DirectionsModal: React.FC<DirectionsModalProps> = ({
   facility,
   onClose,
   userLocation,
+  incidents = [],
 }) => {
   const [offlineSaved, setOfflineSaved] = useState(false);
 
   if (!facility) return null;
 
+  const activeBlockages = incidents.filter(
+    (inc) =>
+      inc.status !== 'RESOLVED' &&
+      (inc.category === 'ROAD_BLOCK' || inc.category === 'FLOODING' || inc.category === 'LANDSLIDE' || inc.category === 'HAZARD')
+  );
+
+  const primaryAvoidance = activeBlockages[0];
+  const secondaryAvoidance = activeBlockages[1];
+
   const mockSteps = [
     {
       instruction: `Head East along ${userLocation.zone.split('-')[0]} high ground toward Ridge Parkway.`,
       distance: '400 m',
-      warning: null
+      warning: null,
     },
     {
-      instruction: 'AVOID 4th Avenue Railway Underpass (submerged 0.9m). Turn left onto Highland Boulevard instead.',
+      instruction: primaryAvoidance
+        ? `DETOUR ACTIVE — AVOID ${primaryAvoidance.locationName} (${primaryAvoidance.title}). Rerouting via elevated arterial bypass.`
+        : 'Continue along Highland Boulevard elevated arterial corridor (clear of low-lying drainage).',
       distance: '1.2 km',
-      warning: 'Hazard Avoided: Flood Water'
+      warning: primaryAvoidance
+        ? `Hazard Avoided: ${primaryAvoidance.category.replace('_', ' ')}${primaryAvoidance.isVerified ? ' (Verified)' : ''}`
+        : null,
     },
-    {
-      instruction: 'Cross the elevated North Causeway Bridge (open with police escort).',
-      distance: '800 m',
-      warning: null
-    },
+    ...(secondaryAvoidance
+      ? [
+          {
+            instruction: `Bypass ${secondaryAvoidance.locationName} (${secondaryAvoidance.category.replace('_', ' ').toLowerCase()}) via South Causeway Overpass.`,
+            distance: '750 m',
+            warning: `Hazard Avoided: ${secondaryAvoidance.severity}`,
+          },
+        ]
+      : [
+          {
+            instruction: 'Cross the elevated North Causeway Bridge (monitored by civil patrol).',
+            distance: '800 m',
+            warning: null,
+          },
+        ]),
     {
       instruction: `Arrive at destination: ${facility.name} (${facility.address}). Enter through Gate B intake.`,
       distance: '200 m',
-      warning: null
-    }
+      warning: null,
+    },
   ];
 
   const handleSaveOffline = () => {

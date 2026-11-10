@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, AlertTriangle, MapPin, Camera, Send } from 'lucide-react';
+import { X, AlertTriangle, MapPin, Camera, Send, WifiOff, Trash2 } from 'lucide-react';
 import { CommunityIncident, LocationData } from '../types/disaster';
 
 interface ReportIncidentModalProps {
   isOpen: boolean;
   onClose: () => void;
   location: LocationData;
+  reporterLabel?: string;
+  isOffline?: boolean;
   onSubmitIncident: (incident: CommunityIncident) => void;
 }
 
@@ -13,6 +15,8 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
   isOpen,
   onClose,
   location,
+  reporterLabel = 'Resident Citizen',
+  isOffline = false,
   onSubmitIncident,
 }) => {
   const [title, setTitle] = useState('');
@@ -20,14 +24,31 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
   const [severity, setSeverity] = useState<CommunityIncident['severity']>('HIGH');
   const [locationName, setLocationName] = useState(`Near ${location.regionName}`);
   const [description, setDescription] = useState('');
-  const [reporterName, setReporterName] = useState('Resident Citizen');
-  const [hasPhoto, setHasPhoto] = useState(false);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPhotoDataUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
+
+    // Heuristic AI verification confidence based on photo + description detail + GPS
+    const aiScore = Math.min(
+      98,
+      72 + (photoDataUrl ? 18 : 0) + (description.trim().length > 40 ? 6 : 2)
+    );
 
     const newIncident: CommunityIncident = {
       id: `inc-${Date.now()}`,
@@ -39,22 +60,27 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
         lat: location.coords.lat + (Math.random() - 0.5) * 0.008,
         lng: location.coords.lng + (Math.random() - 0.5) * 0.008,
       },
-      distanceKm: 0.8,
+      distanceKm: 0.6,
       reportedAt: 'Just now',
-      reportedBy: reporterName.trim() || 'Verified Observer',
+      reportedBy: reporterLabel,
       isVerified: false,
+      status: 'SUBMITTED',
       upvotes: 1,
       description: description.trim(),
+      photoUrl: photoDataUrl ?? undefined,
+      aiVerificationScore: aiScore,
     };
 
     onSubmitIncident(newIncident);
+    setTitle('');
+    setDescription('');
+    setPhotoDataUrl(null);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
       <div className="bg-white border border-slate-200 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
         {/* Header */}
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -66,7 +92,7 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
                 Report Field Incident or Road Hazard
               </h3>
               <p className="text-xs text-slate-500">
-                Broadcast vital road and safety conditions to local responders
+                Sent directly to Authority AI Verification Queue & Lower-Risk Routing
               </p>
             </div>
           </div>
@@ -80,6 +106,15 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-4 text-xs">
+          {isOffline && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 flex items-center gap-2">
+              <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                Offline Mode active — your report will be saved locally and auto-synced to Authorities when connectivity returns.
+              </span>
+            </div>
+          )}
+
           <div>
             <label className="block text-slate-700 font-semibold uppercase tracking-wider mb-1.5">
               Incident Summary Headline:
@@ -101,11 +136,12 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
               </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as any)}
+                onChange={(e) => setCategory(e.target.value as CommunityIncident['category'])}
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
               >
                 <option value="FLOODING">Severe Flooding</option>
                 <option value="ROAD_BLOCK">Road Obstructed / Inaccessible</option>
+                <option value="LANDSLIDE">Landslide / Slope Slip</option>
                 <option value="HAZARD">Electrical Line / Gas Hazard</option>
                 <option value="FIRE">Structural or Brush Fire</option>
                 <option value="STRUCTURAL">Building Wall / Bridge Damage</option>
@@ -119,7 +155,7 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
               </label>
               <select
                 value={severity}
-                onChange={(e) => setSeverity(e.target.value as any)}
+                onChange={(e) => setSeverity(e.target.value as CommunityIncident['severity'])}
                 className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
               >
                 <option value="CRITICAL">Critical (Immediate Danger)</option>
@@ -163,22 +199,42 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
             />
           </div>
 
-          <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <div className="flex items-center gap-2">
-              <Camera className="w-4 h-4 text-slate-500" />
-              <span className="text-slate-900 font-medium">Attach Verified Photo</span>
+          {/* Real Photo Upload / Camera Capture */}
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-slate-500" />
+                <span className="text-slate-900 font-medium">Attach Hazard Photograph</span>
+              </div>
+              <label className="px-2.5 py-1 rounded text-xs border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-medium cursor-pointer transition-colors">
+                {photoDataUrl ? 'Replace Photo' : 'Upload / Take Photo'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </label>
             </div>
-            <button
-              type="button"
-              onClick={() => setHasPhoto(!hasPhoto)}
-              className={`px-2.5 py-1 rounded text-xs border font-medium transition-colors ${
-                hasPhoto 
-                  ? 'bg-slate-900 border-slate-900 text-white' 
-                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              {hasPhoto ? 'Photo Attached (1)' : 'Simulate Camera'}
-            </button>
+
+            {photoDataUrl && (
+              <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-white">
+                <img
+                  src={photoDataUrl}
+                  alt="Incident preview"
+                  className="w-full h-32 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPhotoDataUrl(null)}
+                  className="absolute top-2 right-2 p-1 bg-slate-900/80 text-white rounded-md hover:bg-slate-900"
+                  title="Remove photo"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="pt-2 flex items-center justify-end gap-2.5">
@@ -194,11 +250,10 @@ export const ReportIncidentModal: React.FC<ReportIncidentModalProps> = ({
               className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold flex items-center gap-1.5 transition-colors shadow-xs"
             >
               <Send className="w-3.5 h-3.5 text-slate-300" />
-              <span>Broadcast Incident</span>
+              <span>{isOffline ? 'Queue Report Offline' : 'Broadcast Incident'}</span>
             </button>
           </div>
         </form>
-
       </div>
     </div>
   );

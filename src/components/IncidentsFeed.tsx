@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { 
-  AlertTriangle, 
-  MapPin, 
-  Clock, 
-  CheckCircle, 
-  ThumbsUp, 
-  PlusCircle, 
+import {
+  AlertTriangle,
+  MapPin,
+  Clock,
+  CheckCircle,
+  ThumbsUp,
+  PlusCircle,
   Waves,
   Zap,
   Flame,
-  Truck
+  Truck,
+  Mountain,
 } from 'lucide-react';
 import { CommunityIncident } from '../types/disaster';
 
@@ -48,6 +49,8 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
         return <Flame className="w-4 h-4 text-red-600" />;
       case 'ROAD_BLOCK':
         return <Truck className="w-4 h-4 text-slate-600" />;
+      case 'LANDSLIDE':
+        return <Mountain className="w-4 h-4 text-amber-700" />;
       default:
         return <AlertTriangle className="w-4 h-4 text-slate-600" />;
     }
@@ -66,9 +69,22 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
     }
   };
 
+  const getLifecycleBadge = (inc: CommunityIncident) => {
+    const status = inc.status ?? (inc.isVerified ? 'VERIFIED' : 'SUBMITTED');
+    switch (status) {
+      case 'RESOLVED':
+        return { label: 'Resolved', cls: 'text-emerald-800 bg-emerald-50 border-emerald-200' };
+      case 'RESPONDING':
+        return { label: 'Responders En Route', cls: 'text-blue-800 bg-blue-50 border-blue-200' };
+      case 'VERIFIED':
+        return { label: 'Authority Verified', cls: 'text-emerald-800 bg-emerald-50 border-emerald-200' };
+      default:
+        return { label: 'Submitted · Pending Review', cls: 'text-amber-800 bg-amber-50 border-amber-200' };
+    }
+  };
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
-      
       {/* Header & Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-2">
@@ -77,10 +93,10 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
           </div>
           <div>
             <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-              Recent Local Incidents & Hazard Reports
+              Recent Local Incidents & Citizen–Authority Tracking
             </h3>
             <p className="text-xs text-slate-500">
-              Field observations verified by responders and local scout volunteers
+              Track field reports from submission → AI/Authority verification → response → resolution
             </p>
           </div>
         </div>
@@ -100,7 +116,8 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
           { id: 'ALL', label: 'All Incidents' },
           { id: 'FLOODING', label: 'Flooding' },
           { id: 'ROAD_BLOCK', label: 'Road Blocks' },
-          { id: 'HAZARD', label: 'Electrical / Gas' }
+          { id: 'LANDSLIDE', label: 'Landslides' },
+          { id: 'HAZARD', label: 'Electrical / Gas' },
         ].map((c) => (
           <button
             key={c.id}
@@ -125,12 +142,13 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
         ) : (
           filtered.map((inc) => {
             const hasUpvoted = upvotedSet.has(inc.id);
+            const lifecycle = getLifecycleBadge(inc);
             return (
               <div
                 key={inc.id}
                 className="bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl p-3.5 sm:p-4 transition-colors space-y-2.5"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-start gap-2.5">
                     <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
                       {getCategoryIcon(inc.category)}
@@ -155,19 +173,28 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
                     </div>
                   </div>
 
-                  {inc.isVerified && (
-                    <span className="text-[11px] font-mono font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 shrink-0">
-                      <CheckCircle className="w-3 h-3 text-emerald-600" /> Verified
-                    </span>
-                  )}
+                  <span className={`text-[10px] font-mono font-semibold border px-2 py-0.5 rounded flex items-center gap-1 shrink-0 ${lifecycle.cls}`}>
+                    <CheckCircle className="w-3 h-3" />
+                    {lifecycle.label}
+                  </span>
                 </div>
 
                 <p className="text-xs text-slate-600 leading-relaxed pl-10">
                   {inc.description}
                 </p>
 
+                {inc.photoUrl && (
+                  <div className="pl-10">
+                    <img
+                      src={inc.photoUrl}
+                      alt={inc.title}
+                      className="h-28 w-44 object-cover rounded-lg border border-slate-200"
+                    />
+                  </div>
+                )}
+
                 {/* Footer metadata & Upvote button */}
-                <div className="flex items-center justify-between pl-10 pt-1 text-xs text-slate-500">
+                <div className="flex items-center justify-between pl-10 pt-1 text-xs text-slate-500 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3 opacity-70" />
@@ -195,7 +222,6 @@ export const IncidentsFeed: React.FC<IncidentsFeedProps> = ({
           })
         )}
       </div>
-
     </div>
   );
 };

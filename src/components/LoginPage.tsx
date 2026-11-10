@@ -1,92 +1,168 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// RESQ Platform · Login Page
+// RESQ Platform · Login Page (Supabase Auth)
 // ─────────────────────────────────────────────────────────────────────────────
-// Full-screen login page with Google Sign-In and Phone OTP.
-// Styled to match RESQ's enterprise design language.
+// Supports Email/Password (Sign In & Sign Up), Google OAuth, and Phone OTP
+// via Supabase Auth. Automatically redirects to / once authenticated.
+// When Supabase env vars are missing, displays setup instructions and offers
+// a Local Demo Mode so the platform works immediately without crashing.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import type { ResqRole } from '../lib/supabase';
 import {
   Shield,
   Phone,
+  Mail,
+  Lock,
+  User as UserIcon,
   ArrowRight,
   AlertCircle,
   Loader2,
   CheckCircle2,
   X,
+  Database,
+  Play,
 } from 'lucide-react';
 
-type LoginStep = 'choose' | 'phone-enter' | 'phone-verify';
+type LoginStep = 'choose' | 'email-signin' | 'email-signup' | 'phone-enter' | 'phone-verify';
 
 export function LoginPage() {
   const {
+    user,
+    isConfigured,
+    loginWithEmail,
+    registerWithEmail,
     loginWithGoogle,
-    initRecaptcha,
     requestOtp,
     confirmOtp,
+    enterDemoMode,
     loading,
     error,
+    notice,
     clearError,
+    clearNotice,
   } = useAuth();
 
-  const [step, setStep]             = useState<LoginStep>('choose');
+  const [step, setStep]               = useState<LoginStep>('choose');
+  const [email, setEmail]             = useState('');
+  const [password, setPassword]       = useState('');
+  const [fullName, setFullName]       = useState('');
   const [phoneNumber, setPhoneNumber] = useState('+91');
-  const [otpCode, setOtpCode]       = useState('');
-  const [otpSent, setOtpSent]       = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
+  const [otpCode, setOtpCode]         = useState('');
+  const [sendingOtp, setSendingOtp]   = useState(false);
 
-  // Initialize invisible reCAPTCHA on mount
-  useEffect(() => {
-    initRecaptcha('recaptcha-container');
-  }, [initRecaptcha]);
+  // Redirect immediately if already signed in
+  if (!loading && user) {
+    return <Navigate to="/" replace />;
+  }
 
-  // ── Handle Phone Number Submit ─────────────────────────────────────────────
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || password.length < 6) return;
+    await loginWithEmail(email.trim(), password);
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || password.length < 6) return;
+    await registerWithEmail(email.trim(), password, fullName);
+  };
+
   const handleSendOtp = async () => {
-    if (phoneNumber.length < 10) return;
+    if (phoneNumber.trim().length < 10) return;
     setSendingOtp(true);
     clearError();
     try {
-      await requestOtp(phoneNumber);
-      setOtpSent(true);
-      setStep('phone-verify');
-    } catch {
-      // Error is handled in AuthContext
+      const ok = await requestOtp(phoneNumber.trim());
+      if (ok) {
+        setStep('phone-verify');
+      }
     } finally {
       setSendingOtp(false);
     }
   };
 
-  // ── Handle OTP Verify ──────────────────────────────────────────────────────
   const handleVerifyOtp = async () => {
     if (otpCode.length !== 6) return;
     clearError();
     await confirmOtp(otpCode);
   };
 
+  const switchStep = (next: LoginStep) => {
+    clearError();
+    clearNotice();
+    setStep(next);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       {/* Background pattern */}
       <div className="fixed inset-0 bg-gradient-to-br from-slate-100 via-slate-50 to-blue-50 -z-10" />
-      <div className="fixed inset-0 opacity-[0.03] -z-10"
+      <div
+        className="fixed inset-0 opacity-[0.03] -z-10"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
         }}
       />
 
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md space-y-4">
         {/* ── Header Branding ──────────────────────────────────────────── */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-900 rounded-2xl mb-4 shadow-lg">
             <Shield className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">RESQ Platform</h1>
-          <p className="text-sm text-slate-500 mt-1">National Emergency Response System</p>
+          <p className="text-sm text-slate-500 mt-1">National Emergency Response System · Supabase Backend</p>
         </div>
+
+        {/* ── Supabase Setup Warning + Local Demo Fallback (when .env missing) ─ */}
+        {!isConfigured && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm space-y-3">
+            <div className="flex items-start gap-2.5">
+              <Database className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+              <div className="space-y-1 text-xs text-amber-900">
+                <div className="font-bold">Supabase Credentials Not Configured Yet</div>
+                <p className="text-amber-800 leading-relaxed">
+                  Add <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_URL</code> and{' '}
+                  <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_ANON_KEY</code> to a{' '}
+                  <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">.env</code> file (see{' '}
+                  <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">.env.example</code>) and run{' '}
+                  <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">supabase/schema.sql</code>.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-amber-200/80 space-y-2">
+              <div className="text-[11px] font-mono uppercase font-bold text-amber-800 flex items-center gap-1.5">
+                <Play className="w-3 h-3" />
+                Quick Local Demo Mode (No Backend Needed):
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { role: 'citizen', label: '🛡️ Citizen' },
+                    { role: 'authority', label: '⚡ Authority' },
+                    { role: 'admin', label: '👑 Admin' },
+                  ] as Array<{ role: ResqRole; label: string }>
+                ).map((item) => (
+                  <button
+                    key={item.role}
+                    type="button"
+                    onClick={() => enterDemoMode(item.role)}
+                    className="py-2 px-2 bg-white hover:bg-amber-100/70 border border-amber-300 rounded-lg text-xs font-bold text-slate-900 transition-colors shadow-xs"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Login Card ───────────────────────────────────────────────── */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          
           {/* Error Banner */}
           {error && (
             <div className="bg-red-50 border-b border-red-100 px-5 py-3 flex items-start gap-3">
@@ -98,22 +174,42 @@ export function LoginPage() {
             </div>
           )}
 
-          <div className="p-6 sm:p-8 space-y-6">
+          {/* Success / Info Notice */}
+          {notice && (
+            <div className="bg-emerald-50 border-b border-emerald-100 px-5 py-3 flex items-start gap-3">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-emerald-800 flex-1">{notice}</p>
+              <button onClick={clearNotice} className="text-emerald-500 hover:text-emerald-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
+          <div className="p-6 sm:p-8 space-y-5">
             {/* ── Step: Choose Login Method ──────────────────────────────── */}
             {step === 'choose' && (
               <>
                 <div className="text-center">
                   <h2 className="text-lg font-semibold text-slate-900">Sign in to continue</h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    Secure access with Google or Phone OTP verification
+                    Powered by Supabase Auth · Email, Google OAuth, or Phone OTP
                   </p>
                 </div>
+
+                {/* Email Sign-In Button */}
+                <button
+                  onClick={() => switchStep('email-signin')}
+                  disabled={loading || !isConfigured}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                >
+                  <Mail className="w-4 h-4" />
+                  Sign in with Email & Password
+                </button>
 
                 {/* Google Sign-In Button */}
                 <button
                   onClick={loginWithGoogle}
-                  disabled={loading}
+                  disabled={loading || !isConfigured}
                   className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                 >
                   {loading ? (
@@ -141,14 +237,198 @@ export function LoginPage() {
 
                 {/* Phone OTP Button */}
                 <button
-                  onClick={() => setStep('phone-enter')}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  onClick={() => switchStep('phone-enter')}
+                  disabled={loading || !isConfigured}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-slate-100 text-slate-800 border border-slate-200 rounded-xl text-sm font-semibold hover:bg-slate-200/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Phone className="w-4 h-4" />
                   Sign in with Phone OTP
                 </button>
+
+                <div className="text-center pt-1">
+                  <button
+                    type="button"
+                    onClick={() => switchStep('email-signup')}
+                    disabled={loading || !isConfigured}
+                    className="text-xs text-slate-600 hover:text-slate-900 font-medium underline underline-offset-2 disabled:opacity-50"
+                  >
+                    New to RESQ? Create an account
+                  </button>
+                </div>
               </>
+            )}
+
+            {/* ── Step: Email & Password Sign-In ────────────────────────── */}
+            {step === 'email-signin' && (
+              <form onSubmit={handleEmailSignIn} className="space-y-4">
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => switchStep('choose')}
+                    className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 mb-4"
+                  >
+                    ← Back to login options
+                  </button>
+                  <h2 className="text-lg font-semibold text-slate-900">Email Sign In</h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Enter your registered email and password
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Password</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !email.trim() || password.length < 6}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      Sign In
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => switchStep('email-signup')}
+                    className="text-xs text-slate-500 hover:text-slate-900 font-medium"
+                  >
+                    Need an account? Sign up
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* ── Step: Email & Password Sign-Up ────────────────────────── */}
+            {step === 'email-signup' && (
+              <form onSubmit={handleEmailSignUp} className="space-y-4">
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => switchStep('choose')}
+                    className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 mb-4"
+                  >
+                    ← Back to login options
+                  </button>
+                  <h2 className="text-lg font-semibold text-slate-900">Create RESQ Account</h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Register a new account with Citizen access
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Full Name</label>
+                  <div className="relative">
+                    <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Aarav Sharma"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Email Address</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Password (min 6 chars)</label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !email.trim() || password.length < 6}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    <>
+                      Create Account
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => switchStep('email-signin')}
+                    className="text-xs text-slate-500 hover:text-slate-900 font-medium"
+                  >
+                    Already have an account? Sign in
+                  </button>
+                </div>
+              </form>
             )}
 
             {/* ── Step: Enter Phone Number ──────────────────────────────── */}
@@ -156,7 +436,7 @@ export function LoginPage() {
               <>
                 <div>
                   <button
-                    onClick={() => { setStep('choose'); clearError(); }}
+                    onClick={() => switchStep('choose')}
                     className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 mb-4"
                   >
                     ← Back to login options
@@ -183,7 +463,6 @@ export function LoginPage() {
                   </div>
 
                   <button
-                    id="send-otp-button"
                     onClick={handleSendOtp}
                     disabled={sendingOtp || phoneNumber.length < 10}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -209,7 +488,7 @@ export function LoginPage() {
               <>
                 <div>
                   <button
-                    onClick={() => { setStep('phone-enter'); setOtpCode(''); clearError(); }}
+                    onClick={() => { switchStep('phone-enter'); setOtpCode(''); }}
                     className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 mb-4"
                   >
                     ← Change phone number
@@ -262,32 +541,28 @@ export function LoginPage() {
                     disabled={sendingOtp}
                     className="w-full text-xs text-slate-500 hover:text-slate-700 font-medium py-2"
                   >
-                    {sendingOtp ? 'Resending...' : 'Didn\'t receive it? Resend OTP'}
+                    {sendingOtp ? 'Resending...' : "Didn't receive it? Resend OTP"}
                   </button>
                 </div>
               </>
             )}
-
           </div>
 
           {/* Role info footer */}
           <div className="border-t border-slate-100 bg-slate-50 px-6 py-4">
             <p className="text-[10px] text-slate-400 text-center leading-relaxed">
               New users are assigned the <strong className="text-slate-600">Citizen</strong> role by default.
-              Contact your administrator for <strong className="text-slate-600">Authority</strong> or <strong className="text-slate-600">Admin</strong> access.
+              Contact your administrator for <strong className="text-slate-600">Authority</strong> or{' '}
+              <strong className="text-slate-600">Admin</strong> access.
             </p>
           </div>
         </div>
 
-        {/* Invisible reCAPTCHA container (required for Phone auth) */}
-        <div id="recaptcha-container" />
-
         {/* Footer */}
-        <p className="text-center text-[10px] text-slate-400 mt-6 font-mono">
+        <p className="text-center text-[10px] text-slate-400 mt-4 font-mono">
           RESQ Platform · National Emergency Response System v2.4.1
         </p>
       </div>
     </div>
   );
 }
-

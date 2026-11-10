@@ -25,6 +25,7 @@ interface NavigationSidebarProps {
   setActiveTab: (tab: string) => void;
   role: 'citizen' | 'authority' | 'admin';
   setRole: (role: 'citizen' | 'authority' | 'admin') => void;
+  canSwitchRole?: boolean;
   isCollapsed: boolean;
   setIsCollapsed: (collapsed: boolean) => void;
   activeAlertsCount: number;
@@ -36,6 +37,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   setActiveTab,
   role,
   setRole,
+  canSwitchRole = false,
   isCollapsed,
   setIsCollapsed,
   activeAlertsCount,
@@ -165,24 +167,66 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
           </button>
         </div>
 
-        {/* Active Role Badge (Firebase-assigned, read-only) */}
+        {/* Active Role Badge (Supabase RBAC; interactive only in Local Demo Mode) */}
         <div className="p-3 border-b border-slate-200">
           {!isCollapsed ? (
             <div className="space-y-1.5">
               <div className="text-[10px] font-mono uppercase text-slate-500 font-semibold tracking-wider">
                 {t.activeConsole}
               </div>
-              <div className="bg-slate-100 p-1 rounded-lg border border-slate-200">
-                <div
-                  className="py-1.5 text-xs font-bold rounded text-center bg-white text-slate-900 shadow-xs border border-slate-200"
-                  title={`Your role is assigned by a system administrator`}
-                >
-                  {role === 'citizen' ? '🛡️ Citizen' : role === 'authority' ? '⚡ Authority' : '👑 Admin'}
-                </div>
-              </div>
-              <div className="text-[9px] font-mono text-slate-400 text-center">
-                Role assigned by Firebase Admin
-              </div>
+              {canSwitchRole ? (
+                <>
+                  <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                    <button
+                      onClick={() => setRole('citizen')}
+                      className={`py-1 text-xs font-medium rounded transition-colors text-center ${
+                        role === 'citizen'
+                          ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Citizen
+                    </button>
+                    <button
+                      onClick={() => setRole('authority')}
+                      className={`py-1 text-xs font-medium rounded transition-colors text-center ${
+                        role === 'authority'
+                          ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Authority
+                    </button>
+                    <button
+                      onClick={() => setRole('admin')}
+                      className={`py-1 text-xs font-medium rounded transition-colors text-center ${
+                        role === 'admin'
+                          ? 'bg-white text-slate-900 font-bold shadow-xs border border-slate-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Admin
+                    </button>
+                  </div>
+                  <div className="text-[9px] font-mono text-amber-700 text-center">
+                    Local Demo Mode (Preview Switcher)
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-slate-100 p-1 rounded-lg border border-slate-200">
+                    <div
+                      className="py-1.5 text-xs font-bold rounded text-center bg-white text-slate-900 shadow-xs border border-slate-200"
+                      title="Your role is managed by Supabase RBAC"
+                    >
+                      {role === 'citizen' ? '🛡️ Citizen' : role === 'authority' ? '⚡ Authority' : '👑 Admin'}
+                    </div>
+                  </div>
+                  <div className="text-[9px] font-mono text-slate-400 text-center">
+                    Role assigned by Admin (Supabase)
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div

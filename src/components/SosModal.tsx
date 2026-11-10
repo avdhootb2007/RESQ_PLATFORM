@@ -146,13 +146,43 @@ export const SosModal: React.FC<SosModalProps> = ({
             <div className="space-y-4">
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center space-y-2">
                 <div className="text-xs font-mono text-red-700 uppercase tracking-widest font-bold">
-                  Distress Beacon Active
+                  Distress Beacon Active · {sosState.workflowStage || 'BROADCASTED'}
                 </div>
                 <div className="text-2xl font-bold font-mono text-slate-900 tracking-wider">
                   {sosState.beaconId}
                 </div>
                 <div className="text-xs text-slate-600">
-                  Transmitting every 30s · Estimated responder triage: <strong className="text-slate-900">4–8 mins</strong>
+                  {sosState.workflowStage && sosState.workflowStage !== 'BROADCASTED' ? (
+                    <>
+                      Assigned Unit: <strong className="text-emerald-700">{sosState.assignedUnit}</strong>
+                      {typeof sosState.etaMinutes === 'number' && sosState.etaMinutes > 0 && (
+                        <> · ETA <strong className="text-slate-900">{sosState.etaMinutes} mins</strong></>
+                      )}
+                    </>
+                  ) : (
+                    <>Transmitting every 30s · Routed to Authority EOC Triage Queue</>
+                  )}
+                </div>
+
+                {/* Live 4-step workflow tracker synced with Authority */}
+                <div className="grid grid-cols-4 gap-1 pt-2 text-[10px] font-mono">
+                  {(['BROADCASTED', 'DISPATCHED', 'IN_TRANSIT', 'ON_SCENE'] as const).map((st, idx) => {
+                    const order = ['BROADCASTED', 'DISPATCHED', 'IN_TRANSIT', 'ON_SCENE'];
+                    const activeIdx = order.indexOf(sosState.workflowStage || 'BROADCASTED');
+                    const done = idx <= activeIdx;
+                    return (
+                      <div
+                        key={st}
+                        className={`py-1 px-1 rounded border font-bold ${
+                          done
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-white text-slate-400 border-slate-200'
+                        }`}
+                      >
+                        {st.replace('_', ' ')}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

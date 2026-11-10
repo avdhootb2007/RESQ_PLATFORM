@@ -9,7 +9,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader2, ShieldAlert } from 'lucide-react';
-import type { ResqRole } from '../lib/firebase';
+import type { ResqRole } from '../lib/supabase';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -20,7 +20,6 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const { user, role, loading } = useAuth();
 
-  // ── Still resolving auth state ──────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
@@ -30,12 +29,10 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     );
   }
 
-  // ── Not authenticated → redirect to login ──────────────────────────────────
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // ── Authenticated but role not permitted ────────────────────────────────────
   if (allowedRoles && !allowedRoles.includes(role)) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 p-6">
@@ -57,7 +54,5 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     );
   }
 
-  // ── Authorized ──────────────────────────────────────────────────────────────
   return <>{children}</>;
 }
-

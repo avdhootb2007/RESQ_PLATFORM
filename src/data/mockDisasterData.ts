@@ -9,7 +9,9 @@ import {
   ExplainableRiskAssessment,
   IoTSensorStream,
   ClimateHealthRisk,
-  MultiOrgResource
+  MultiOrgResource,
+  SosBeaconRecord,
+  ResourceRequest
 } from '../types/disaster';
 
 export interface RegionPreset {
@@ -861,3 +863,123 @@ export const EMERGENCY_KIT_ITEMS = [
   { id: 'kit-9', name: 'N95 dust/smoke masks (minimum 2 per family member)', category: 'Safety', isPacked: true },
   { id: 'kit-10', name: 'Emergency thermal space blankets & rain ponchos', category: 'Warmth', isPacked: false },
 ];
+
+export const INITIAL_SOS_BEACONS: SosBeaconRecord[] = [
+  {
+    id: 'beacon-1',
+    beaconCode: 'RESQ-SOS-8821',
+    callerName: 'Priya Verma (Citizen ID #8891)',
+    emergencyType: 'Trapped by Rapid Flood Water (0.8m depth)',
+    locationName: '42 Riverbank Road, Ground Floor Apt 2',
+    coords: { lat: 18.9300, lng: 72.8407 },
+    peopleCount: 3,
+    bloodType: 'O+',
+    medicalNotes: 'Elderly occupant on oxygen concentrator. Water rising.',
+    workflowStage: 'BROADCASTED',
+    isActive: true,
+    startedAt: new Date(Date.now() - 4 * 60000).toISOString(),
+    timeAgo: '4 mins ago',
+  },
+  {
+    id: 'beacon-2',
+    beaconCode: 'RESQ-SOS-4190',
+    callerName: 'Marcus Chen',
+    emergencyType: 'Severe Medical Trauma & Debris Collapse',
+    locationName: 'Industrial Yard Gate 6',
+    coords: { lat: 18.9170, lng: 72.8267 },
+    peopleCount: 1,
+    bloodType: 'O-',
+    medicalNotes: 'Crush injury to lower extremity. Tourniquet applied.',
+    workflowStage: 'DISPATCHED',
+    assignedUnit: 'Trauma EMS Unit #7',
+    etaMinutes: 4,
+    isActive: true,
+    startedAt: new Date(Date.now() - 12 * 60000).toISOString(),
+    timeAgo: '12 mins ago',
+  },
+  {
+    id: 'beacon-3',
+    beaconCode: 'RESQ-SOS-1104',
+    callerName: 'Sunil Patil',
+    emergencyType: 'Hillside Slope Slippage / House Creaking',
+    locationName: 'Ghat Foothill Lane 3',
+    coords: { lat: 18.9100, lng: 72.8457 },
+    peopleCount: 4,
+    bloodType: 'A+',
+    medicalNotes: 'Infant + 2 adults. Pathway blocked by fallen boulder.',
+    workflowStage: 'IN_TRANSIT',
+    assignedUnit: 'NDRF Hill Extraction Team #2',
+    etaMinutes: 7,
+    isActive: true,
+    startedAt: new Date(Date.now() - 18 * 60000).toISOString(),
+    timeAgo: '18 mins ago',
+  },
+];
+
+export const INITIAL_RESOURCE_REQUESTS: ResourceRequest[] = [
+  {
+    id: 'req-1',
+    requestedBy: 'EOC Sector 2 Incident Lead',
+    sector: 'Sector 2 Floodplain Core',
+    resourceCategory: 'DRINKING_WATER',
+    neededQty: '5,000 Liters + Chlorine Tablets',
+    urgency: 'CRITICAL',
+    notes: 'Stormwater pumps active; shelters running low on potable reserves.',
+    status: 'OPEN',
+    createdAt: '6 mins ago',
+  },
+];
+
+export function computeExplainableRisk(
+  location: LocationData,
+  weather: WeatherData,
+  verifiedIncidentsCount: number
+): ExplainableRiskAssessment {
+  const floodRiskPct = Math.min(99, Math.max(15, weather.floodRiskScore + verifiedIncidentsCount * 2));
+  const landslideRiskPct =
+    location.primaryHazard === 'LANDSLIDE' || location.elevationMeters > 100
+      ? Math.min(96, 78 + Math.round(weather.precipitationAccumulationMm / 25))
+      : Math.min(80, Math.round(weather.precipitationAccumulationMm * 0.35 + 12));
+  const heatwaveRiskPct = Math.max(10, Math.min(95, Math.round((weather.temperatureC - 18) * 2.5)));
+  const overallScore = Math.min(
+    99,
+    Math.round(floodRiskPct * 0.55 + landslideRiskPct * 0.3 + verifiedIncidentsCount * 3)
+  );
+
+  return {
+    overallScore,
+    floodRiskPct,
+    landslideRiskPct,
+    heatwaveRiskPct,
+    factors: [
+      {
+        name: 'Rainfall Accumulation Rate',
+        impact: weather.precipitationAccumulationMm > 100 ? 'HIGH' : 'MEDIUM',
+        value: `${weather.precipitationAccumulationMm} mm / 24h (${weather.precipitationChancePct}% prob)`,
+        description: 'Live precipitation rate compared against municipal storm drain runoff threshold.',
+      },
+      {
+        name: 'Terrain & Elevation Incline',
+        impact: location.elevationMeters < 15 || location.elevationMeters > 300 ? 'HIGH' : 'MEDIUM',
+        value: `${location.elevationMeters}m AMSL (${location.zone.split('-')[0].trim()})`,
+        description:
+          location.elevationMeters < 15
+            ? 'Low-lying basin elevation slows gravity drainage during high tide or peak surge.'
+            : 'Steep foothill slope elevates shear stress under prolonged ground saturation.',
+      },
+      {
+        name: 'Verified Field Hazards Nearby',
+        impact: verifiedIncidentsCount >= 3 ? 'HIGH' : 'MEDIUM',
+        value: `${verifiedIncidentsCount} Authority-Verified Incidents`,
+        description: 'Live road blockages, downed power lines, and flooded corridors confirmed via Citizen–Authority Bridge.',
+      },
+      {
+        name: 'Wind Velocity & Gust Load',
+        impact: weather.windGustKmh >= 70 ? 'HIGH' : 'LOW',
+        value: `${weather.windSpeedKmh} km/h (Gusts ${weather.windGustKmh} km/h)`,
+        description: 'Sustained gale force affects power lines, signage, and coastal wave surge.',
+      },
+    ],
+    explanationText: `Composite risk score is ${overallScore}/100 (${location.threatLevel}). Driven by ${weather.precipitationAccumulationMm}mm 24h rainfall, ${location.elevationMeters}m terrain elevation, and ${verifiedIncidentsCount} verified field hazards in ${location.regionName}.`,
+  };
+}

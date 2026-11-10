@@ -363,9 +363,19 @@ export const DisasterMap: React.FC<DisasterMapProps> = ({
                   </p>
                 )}
                 {selectedEntity.type === 'incident' && (
-                  <p className="text-slate-600 mt-0.5">
-                    {selectedEntity.data.description}
-                  </p>
+                  <div className="space-y-1.5 mt-1">
+                    <p className="text-slate-600">{selectedEntity.data.description}</p>
+                    <div className="flex items-center gap-2 text-[10px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 font-bold">
+                        Status: {selectedEntity.data.status || (selectedEntity.data.isVerified ? 'VERIFIED' : 'SUBMITTED')}
+                      </span>
+                      {selectedEntity.data.aiVerificationScore && (
+                        <span className="text-emerald-700 font-semibold">
+                          AI Confidence: {selectedEntity.data.aiVerificationScore}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 

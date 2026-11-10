@@ -218,3 +218,46 @@ export interface MultiOrgResource {
   assignedToSector: string;
   status: 'AVAILABLE' | 'EN_ROUTE' | 'DEPLOYED';
 }
+
+export type SosWorkflowStage = 'BROADCASTED' | 'DISPATCHED' | 'IN_TRANSIT' | 'ON_SCENE';
+
+export interface SosBeaconRecord {
+  id: string;
+  beaconCode: string;
+  callerName: string;
+  userId?: string;
+  emergencyType: string;
+  locationName: string;
+  coords: { lat: number; lng: number };
+  peopleCount: number;
+  bloodType: string;
+  medicalNotes: string;
+  workflowStage: SosWorkflowStage;
+  assignedUnit?: string;
+  etaMinutes?: number;
+  isActive: boolean;
+  startedAt: string;
+  timeAgo: string;
+}
+
+export interface ResourceRequest {
+  id: string;
+  requestedBy: string;
+  sector: string;
+  resourceCategory: MultiOrgResource['resourceCategory'];
+  neededQty: string;
+  urgency: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+  notes?: string;
+  status: 'OPEN' | 'MATCHED' | 'FULFILLED';
+  matchedResourceId?: string;
+  matchedOrgName?: string;
+  createdAt: string;
+}
+
+export interface OfflineQueueItem {
+  id: string;
+  kind: 'INCIDENT' | 'SOS';
+  createdAt: string;
+  label: string;
+  payload: any;
+}

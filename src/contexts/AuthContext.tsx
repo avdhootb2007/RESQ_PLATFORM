@@ -1,8 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// RESQ Platform · Auth Context
+// RESQ Platform · Auth Context (Supabase Backend)
 // ─────────────────────────────────────────────────────────────────────────────
-// Provides app-wide authentication state, user object, role, and auth methods.
-// Wraps the entire app so any component can call `useAuth()`.
+// Provides app-wide authentication state, normalized user, RBAC role, and
+// Supabase auth methods (Email/Password, Google OAuth, Phone OTP).
+// When Supabase env vars are not yet configured, allows Local Demo Mode so the
+// UI remains functional out of the box without crashing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, {
@@ -13,161 +15,282 @@ import React, {
   useCallback,
   type ReactNode,
 } from 'react';
+import type { User } from '@supabase/supabase-js';
 import {
-  auth,
-  onAuthStateChanged,
+  supabase,
+  isSupabaseConfigured,
+  mapSupabaseUser,
+  signInWithEmail,
+  signUpWithEmail,
   signInWithGoogle,
-  setupRecaptcha,
   sendOtp,
   verifyOtp,
   signOutUser,
-  getUserRole,
-  type User,
-  type ConfirmationResult,
+  syncUserProfileAndRole,
+  type AuthUser,
   type ResqRole,
-} from '../lib/firebase';
+} from '../lib/supabase';
 
-// ── Context Shape ────────────────────────────────────────────────────────────
+const DEMO_ROLE_STORAGE_KEY = 'resq_demo_role';
+
 interface AuthContextType {
-  // State
-  user: User | null;
+  user: AuthUser | null;
   role: ResqRole;
   loading: boolean;
   error: string | null;
+  notice: string | null;
+  isConfigured: boolean;
+  isDemoMode: boolean;
 
-  // Google Sign-In
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  registerWithEmail: (email: string, password: string, fullName?: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-
-  // Phone OTP Sign-In (two-step)
-  initRecaptcha: (buttonId: string) => void;
-  requestOtp: (phoneNumber: string) => Promise<void>;
+  requestOtp: (phoneNumber: string) => Promise<boolean>;
   confirmOtp: (code: string) => Promise<void>;
-
-  // Sign Out
+  enterDemoMode: (selectedRole?: ResqRole) => void;
+  switchDemoRole: (selectedRole: ResqRole) => void;
   logout: () => Promise<void>;
-
-  // Clear errors
   clearError: () => void;
+  clearNotice: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ── Provider ─────────────────────────────────────────────────────────────────
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]               = useState<User | null>(null);
-  const [role, setRole]               = useState<ResqRole>('citizen');
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
+function makeDemoUser(selectedRole: ResqRole): AuthUser {
+  const labels: Record<ResqRole, string> = {
+    citizen: 'Demo Citizen',
+    authority: 'Demo EOC Commander',
+    admin: 'Demo System Admin',
+  };
+  return {
+    id: `demo-${selectedRole}`,
+    email: `${selectedRole}@resq.local`,
+    phone: null,
+    displayName: labels[selectedRole],
+    avatarUrl: null,
+    isDemo: true,
+  };
+}
 
-  // ── Listen to Firebase auth state ──────────────────────────────────────────
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [user, setUser]                 = useState<AuthUser | null>(null);
+  const [role, setRole]                 = useState<ResqRole>('citizen');
+  const [loading, setLoading]           = useState<boolean>(isSupabaseConfigured);
+  const [error, setError]               = useState<string | null>(null);
+  const [notice, setNotice]             = useState<string | null>(null);
+  const [pendingPhone, setPendingPhone] = useState<string | null>(null);
+
+  // ── Restore demo session if Supabase isn't configured ──────────────────────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      try {
-        if (firebaseUser) {
-          const userRole = await getUserRole(firebaseUser);
-          setUser(firebaseUser);
-          setRole(userRole);
-        } else {
-          setUser(null);
-          setRole('citizen');
+    if (isSupabaseConfigured) {
+      return;
+    }
+    const savedDemoRole = sessionStorage.getItem(DEMO_ROLE_STORAGE_KEY) as ResqRole | null;
+    if (savedDemoRole === 'citizen' || savedDemoRole === 'authority' || savedDemoRole === 'admin') {
+      setUser(makeDemoUser(savedDemoRole));
+      setRole(savedDemoRole);
+    }
+    setLoading(false);
+  }, []);
+
+  // ── Listen to Supabase Auth state (keep callback synchronous) ──────────────
+  useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    supabase.auth
+      .getSession()
+      .then(({ data, error: sessionErr }) => {
+        if (!active) return;
+        if (sessionErr) {
+          console.error('Supabase getSession error:', sessionErr);
         }
-      } catch (err) {
-        console.error('Auth state change error:', err);
-        setError('Failed to determine user role.');
-      } finally {
-        setLoading(false);
-      }
+        const sessionUser = data.session?.user ?? null;
+        setSupabaseUser(sessionUser);
+        if (!sessionUser) {
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to read Supabase session:', err);
+        if (active) setLoading(false);
+      });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setSupabaseUser(session?.user ?? null);
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  // ── Google Sign-In ─────────────────────────────────────────────────────────
+  // ── Sync user profile & role outside onAuthStateChange callback ────────────
+  useEffect(() => {
+    if (!supabase) return;
+
+    let active = true;
+
+    if (!supabaseUser) {
+      setUser(null);
+      setRole('citizen');
+      setLoading(false);
+      return;
+    }
+
+    setUser(mapSupabaseUser(supabaseUser));
+    syncUserProfileAndRole(supabaseUser)
+      .then((resolvedRole) => {
+        if (active) {
+          setRole(resolvedRole);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [supabaseUser]);
+
+  // ── Email / Password Sign-In ───────────────────────────────────────────────
+  const loginWithEmail = useCallback(async (email: string, password: string) => {
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+    try {
+      const data = await signInWithEmail(email, password);
+      if (data.user) {
+        setSupabaseUser(data.user);
+      }
+    } catch (err: any) {
+      console.error('Email sign-in error:', err);
+      setError(err.message || 'Invalid email or password.');
+      setLoading(false);
+    }
+  }, []);
+
+  // ── Email / Password Sign-Up ───────────────────────────────────────────────
+  const registerWithEmail = useCallback(async (email: string, password: string, fullName?: string) => {
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+    try {
+      const data = await signUpWithEmail(email, password, fullName);
+      if (data.session && data.user) {
+        setSupabaseUser(data.user);
+      } else {
+        setNotice('Account created! Check your email inbox to confirm your address, then sign in.');
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error('Email sign-up error:', err);
+      setError(err.message || 'Could not create account.');
+      setLoading(false);
+    }
+  }, []);
+
+  // ── Google OAuth Sign-In ───────────────────────────────────────────────────
   const loginWithGoogle = useCallback(async () => {
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
-      const firebaseUser = await signInWithGoogle();
-      const userRole = await getUserRole(firebaseUser);
-      setUser(firebaseUser);
-      setRole(userRole);
+      await signInWithGoogle();
+      // Browser redirects to Google OAuth flow
     } catch (err: any) {
       console.error('Google sign-in error:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in popup was closed. Please try again.');
-      } else if (err.code === 'auth/popup-blocked') {
-        setError('Sign-in popup was blocked. Please allow popups for this site.');
-      } else {
-        setError(err.message || 'Google sign-in failed.');
-      }
-    } finally {
+      setError(err.message || 'Google sign-in failed.');
       setLoading(false);
     }
   }, []);
 
-  // ── Phone OTP: Step 1 – Initialize reCAPTCHA ──────────────────────────────
-  const initRecaptcha = useCallback((buttonId: string) => {
-    setupRecaptcha(buttonId);
-  }, []);
-
-  // ── Phone OTP: Step 2 – Request OTP ───────────────────────────────────────
-  const requestOtp = useCallback(async (phoneNumber: string) => {
+  // ── Phone OTP: Request code ────────────────────────────────────────────────
+  const requestOtp = useCallback(async (phoneNumber: string): Promise<boolean> => {
     setError(null);
+    setNotice(null);
     try {
-      const result = await sendOtp(phoneNumber);
-      setConfirmation(result);
+      await sendOtp(phoneNumber);
+      setPendingPhone(phoneNumber);
+      return true;
     } catch (err: any) {
       console.error('OTP send error:', err);
-      if (err.code === 'auth/invalid-phone-number') {
-        setError('Invalid phone number. Use format: +919876543210');
-      } else if (err.code === 'auth/too-many-requests') {
-        setError('Too many attempts. Please wait before retrying.');
-      } else {
-        setError(err.message || 'Failed to send OTP.');
-      }
+      setError(err.message || 'Failed to send OTP. Ensure Phone Auth is enabled in Supabase.');
+      return false;
     }
   }, []);
 
-  // ── Phone OTP: Step 3 – Verify code ───────────────────────────────────────
+  // ── Phone OTP: Verify code ─────────────────────────────────────────────────
   const confirmOtp = useCallback(async (code: string) => {
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
-      if (!confirmation) throw new Error('No OTP session found. Please request a new code.');
-      const firebaseUser = await verifyOtp(confirmation, code);
-      const userRole = await getUserRole(firebaseUser);
-      setUser(firebaseUser);
-      setRole(userRole);
-      setConfirmation(null);
+      if (!pendingPhone) {
+        throw new Error('No active OTP request found. Please request a new code.');
+      }
+      const data = await verifyOtp(pendingPhone, code);
+      if (data.user) {
+        setSupabaseUser(data.user);
+      }
+      setPendingPhone(null);
     } catch (err: any) {
       console.error('OTP verify error:', err);
-      if (err.code === 'auth/invalid-verification-code') {
-        setError('Invalid OTP code. Please check and try again.');
-      } else if (err.code === 'auth/code-expired') {
-        setError('OTP has expired. Please request a new one.');
-      } else {
-        setError(err.message || 'OTP verification failed.');
-      }
-    } finally {
+      setError(err.message || 'Invalid or expired OTP code.');
       setLoading(false);
     }
-  }, [confirmation]);
+  }, [pendingPhone]);
+
+  // ── Local Demo Mode (only active when Supabase env vars are missing) ───────
+  const enterDemoMode = useCallback((selectedRole: ResqRole = 'citizen') => {
+    if (isSupabaseConfigured) return;
+    setError(null);
+    setNotice(null);
+    sessionStorage.setItem(DEMO_ROLE_STORAGE_KEY, selectedRole);
+    setUser(makeDemoUser(selectedRole));
+    setRole(selectedRole);
+    setLoading(false);
+  }, []);
+
+  const switchDemoRole = useCallback((selectedRole: ResqRole) => {
+    if (isSupabaseConfigured) return;
+    sessionStorage.setItem(DEMO_ROLE_STORAGE_KEY, selectedRole);
+    setUser(makeDemoUser(selectedRole));
+    setRole(selectedRole);
+  }, []);
 
   // ── Sign Out ───────────────────────────────────────────────────────────────
   const logout = useCallback(async () => {
     setError(null);
+    setNotice(null);
+    sessionStorage.removeItem(DEMO_ROLE_STORAGE_KEY);
+    if (user?.isDemo) {
+      setUser(null);
+      setRole('citizen');
+      return;
+    }
     try {
       await signOutUser();
+      setSupabaseUser(null);
       setUser(null);
       setRole('citizen');
     } catch (err: any) {
       setError(err.message || 'Sign-out failed.');
     }
-  }, []);
+  }, [user?.isDemo]);
 
-  // ── Clear error ────────────────────────────────────────────────────────────
   const clearError = useCallback(() => setError(null), []);
+  const clearNotice = useCallback(() => setNotice(null), []);
 
   return (
     <AuthContext.Provider
@@ -176,12 +299,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         loading,
         error,
+        notice,
+        isConfigured: isSupabaseConfigured,
+        isDemoMode: Boolean(user?.isDemo),
+        loginWithEmail,
+        registerWithEmail,
         loginWithGoogle,
-        initRecaptcha,
         requestOtp,
         confirmOtp,
+        enterDemoMode,
+        switchDemoRole,
         logout,
         clearError,
+        clearNotice,
       }}
     >
       {children}
@@ -189,7 +319,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ── Hook ─────────────────────────────────────────────────────────────────────
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
   if (!ctx) {
@@ -197,4 +326,3 @@ export function useAuth(): AuthContextType {
   }
   return ctx;
 }
-
